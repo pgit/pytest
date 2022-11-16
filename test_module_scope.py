@@ -1,17 +1,10 @@
 #!/usr/bin/python3
 import asyncio
+
 import aiohttp
-from typing import Any, Dict, Optional, Type, Union
-from typing import Any, Awaitable, Callable, Dict, Generator, Optional, Type, Union
-
-
-import pytest_aiohttp
 import pytest_asyncio
-from aiohttp.test_utils import TestServer, TestClient
+from aiohttp.test_utils import TestServer
 from aiohttp.web import Application, Response
-from aiohttp.test_utils import BaseTestServer, TestClient, TestServer
-
-AiohttpClient = Callable[[Union[Application, BaseTestServer]], Awaitable[TestClient]]
 
 import pytest
 
@@ -45,6 +38,24 @@ async def module_scoped_server():
     yield server
     await server.close()
 
+async def handle_echo(reader, writer):
+    data = await reader.read(100)
+    message = data.decode()
+    addr = writer.get_extra_info('peername')
+
+    print(f"Received {message!r} from {addr!r}")
+
+    print(f"Send: {message!r}")
+    writer.write(data)
+    await writer.drain()
+
+    print("Close the connection")
+    writer.close()
+
+@pytest_asyncio.fixture(scope="module")
+async def x2_receiver(unused_tcp_port):
+    server = await asyncio.start_server(handle_echo, '127.0.0.1', unused_tcp_port)
+
 #
 # We can't use the aiohttp_client fixture together with our custom module scoped server,
 # as the client will also stop the server it has been passed when it is closed.
@@ -61,4 +72,4 @@ async def test_module_1(module_scoped_server, counter):
 #
 def pytest_generate_tests(metafunc):
     if "counter" in metafunc.fixturenames:
-        metafunc.parametrize("counter", range(1, 20))
+        metafunc.parametrize("counter", range(1, 5))
