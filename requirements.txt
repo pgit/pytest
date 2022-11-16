@@ -1,3 +1,6 @@
+autopep8
+pylint
+
 pytest >= 7
 pytest-aiohttp >= 1
 pytest-depends >= 1
