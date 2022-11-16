@@ -23,10 +23,18 @@ def event_loop():
     yield loop
     loop.close()
 
+#
+# For testing, make a server that returns a response with a counter.
+# Also, return the contents of a request header in a future.
+#
+FUTURE=None
 COUNTER=0
-async def handler(request):
+async def handler(request:aiohttp.ClientRequest):
     global COUNTER
+    global FUTURE
     COUNTER += 1
+    assert FUTURE
+    FUTURE.set_result(f"{COUNTER}={request.headers['X-Counter']}")
     return Response(body=f"This is request #{COUNTER}")
 
 @pytest_asyncio.fixture(scope="module")
@@ -38,38 +46,24 @@ async def module_scoped_server():
     yield server
     await server.close()
 
-async def handle_echo(reader, writer):
-    data = await reader.read(100)
-    message = data.decode()
-    addr = writer.get_extra_info('peername')
-
-    print(f"Received {message!r} from {addr!r}")
-
-    print(f"Send: {message!r}")
-    writer.write(data)
-    await writer.drain()
-
-    print("Close the connection")
-    writer.close()
-
-@pytest_asyncio.fixture(scope="module")
-async def x2_receiver(unused_tcp_port):
-    server = await asyncio.start_server(handle_echo, '127.0.0.1', unused_tcp_port)
-
 #
 # We can't use the aiohttp_client fixture together with our custom module scoped server,
 # as the client will also stop the server it has been passed when it is closed.
 #
 @pytest.mark.asyncio
-async def test_module_1(module_scoped_server, counter):
+async def test_counter(module_scoped_server, counter):
     async with aiohttp.ClientSession() as session:
-        async with session.get(module_scoped_server.make_url("/")) as resp:
+        global FUTURE
+        FUTURE = asyncio.get_event_loop().create_future()
+        async with session.get(module_scoped_server.make_url("/"), headers={'X-Counter':f"{counter}"}) as resp:
             text = await resp.text()
             assert f"#{counter}" in text
+        
+        global COUNTER
+        assert await FUTURE == f"{COUNTER}={COUNTER}"
+        
 
-#
-# Parametrized "counter" fixture
-#
+# Parametrized "counter" fixture, will run test 'test_counter' with counter=1, 2, ...
 def pytest_generate_tests(metafunc):
     if "counter" in metafunc.fixturenames:
         metafunc.parametrize("counter", range(1, 5))
