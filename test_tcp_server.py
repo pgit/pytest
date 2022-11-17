@@ -2,8 +2,6 @@
 import asyncio
 
 import pytest_asyncio
-from aiohttp.test_utils import TestServer
-from aiohttp.web import Application, Response
 
 import pytest
 
@@ -20,13 +18,10 @@ def event_loop():
 #
 # Module-scoped TCP server
 #
-
-
 async def handle_echo(reader, writer):
     data = await reader.read(100)
     message = data.decode()
     addr = writer.get_extra_info('peername')
-
     print(f"Received {message!r} from {addr!r}")
 
     print(f"Send: {message!r}")
@@ -36,9 +31,8 @@ async def handle_echo(reader, writer):
     print("Close the connection")
     writer.close()
 
-
 @pytest_asyncio.fixture(scope="module")
-async def x2_receiver():
+async def echo_server():
     server = await asyncio.start_server(handle_echo, '127.0.0.1')
     assert server.sockets
     yield server
@@ -49,8 +43,8 @@ async def x2_receiver():
 # TCP test client
 #
 @pytest.mark.asyncio
-async def test_tcp(x2_receiver: asyncio.Server, counter):
-    socket = x2_receiver.sockets[0]
+async def test_tcp(echo_server: asyncio.Server, counter):
+    socket = echo_server.sockets[0]
     reader, writer = await asyncio.open_connection(*socket.getsockname())
     msg = f"Hello World #{counter}!\n"
     writer.write(msg.encode())
@@ -60,4 +54,4 @@ async def test_tcp(x2_receiver: asyncio.Server, counter):
 # Parametrized "counter" fixture, will run test 'test_counter' with counter=1, 2, ...
 def pytest_generate_tests(metafunc):
     if "counter" in metafunc.fixturenames:
-        metafunc.parametrize("counter", range(4))
+        metafunc.parametrize("counter", range(1, 5))
